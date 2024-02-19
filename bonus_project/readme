@@ -1,0 +1,2 @@
+The Keras files of the trained on over 40000 satellite images models can be found. For training the dataset included images of satellites in different lighting and position conditions and clarification between foreign objects. Therefore the output is a confirmation a detection of a satellite, amond different objects. Not segmenting the satellite from the background. 
+
