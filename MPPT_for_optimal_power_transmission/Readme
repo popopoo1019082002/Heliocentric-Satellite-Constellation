@@ -1,1 +1,17 @@
-.
+The code provided for the Maximum Power Point Tracking (MPPT) system is designed to optimize the power output of a photovoltaic (PV) module. It achieves this through several functions:
+
+Initialization (setup()): The system begins by setting up the serial communication and configuring the digital-to-analog converter (DAC) resolution for the control pin.
+
+Reading Voltage and Current: The readVoltage() and readCurrent() functions use the analog pins to read the input voltage from the PV module and the input current, converting these analog values to usable voltage and current readings.
+
+Calculating Power (calculatePower()): This function multiplies the voltage and current to determine the instantaneous power output of the PV module.
+
+Perturbation (perturbCurrentControl()): The code adjusts the control voltage to the LT8611 chip's ICTRL pin, seeking the maximum power point. If the measured power increases, the control voltage continues in the same direction; if it decreases, the control voltage adjusts in the opposite direction.
+
+Looping: The loop() function continuously measures, calculates, and adjusts, keeping the system at the optimal power point using the "perturb and observe" method. This method is simple and effective but can cause power fluctuations around the maximum power point under rapidly changing conditions.
+
+Control Voltage Adjustment: The control voltage, which affects the charging current, is kept within a 0-1V range. It's scaled and written to the ICTRL pin to regulate the charging process.
+
+Debugging Output: The code can output readings to the serial monitor for real-time debugging and monitoring of the system's performance.
+
+The code is modular, allowing for adjustments to pin assignments, scaling factors, and perturbation sizes to cater to different hardware setups or to fine-tune the system's response to power changes.
