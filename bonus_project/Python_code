@@ -1,0 +1,479 @@
+# Jupyter notebook
+
+Data augmentation and dataset expansion
+• Iteration number 4 for the dataset augmentation (after not having access to the server's
+files to use some components of the CV, we had to convert images to arrays and then
+back)
+• Expanding the dataset
+from PIL import Image
+from tensorflow.keras.preprocessing.image import ImageDataGenerator
+import numpy as np
+import os
+from tqdm.notebook import tqdm
+data_gen = ImageDataGenerator(rotation_range=90, horizontal_flip=True,
+vertical_flip=True)
+# Paths
+original_train_path = 'Satellite_data_masked_train'
+original_val_path = 'Satellite_data_masked_val'
+augmented_train_path = 'Satellite_data_masked_train_aug_4'
+augmented_val_path = 'Satellite_data_masked_val_aug_4'
+def add_gaussian_noise(image):
+row, col, ch = image.shape
+mean = 0
+sigma = np.random.uniform(2, 3)
+gauss = np.random.normal(mean, sigma, (row, col, ch))
+noisy = image + gauss
+noisy = np.clip(noisy, 0, 255)
+return noisy.astype('uint8')
+def load_images_from_folder(folder):
+images = []
+for filename in os.listdir(folder):
+img_path = os.path.join(folder, filename)
+try:
+with Image.open(img_path) as img:
+images.append(np.array(img))
+except IOError:
+# Optionally, print an error message if an image can't be
+opened
+pass
+return images
+train_images = load_images_from_folder(original_train_path)
+val_images = load_images_from_folder(original_val_path)
+def apply_zoom(image_array, zoom_factor):
+"""
+Apply zoom to an image using numpy and PIL.
+image_array: numpy array of the image.
+zoom_factor: float, the zoom factor (1 for no zoom, >1 for zooming
+in).
+"""
+# Convert numpy array to PIL Image for resizing
+img = Image.fromarray(image_array)
+# Calculate new size
+width, height = img.size
+new_width = int(width * zoom_factor)
+new_height = int(height * zoom_factor)
+# Resize image
+img_zoomed = img.resize((new_width, new_height))
+# Crop to original size from center if zoomed in
+if zoom_factor > 1:
+left = (new_width - width) / 2
+top = (new_height - height) / 2
+right = (new_width + width) / 2
+bottom = (new_height + height) / 2
+img_zoomed = img_zoomed.crop((left, top, right, bottom))
+return np.array(img_zoomed)
+def augment_and_save(images, original_path, augmented_train_path,
+augmented_val_path, desc):
+num_train = len(images) * 8 # 40% of the total augmented images
+num_val = len(images) * 8 # 60% of the total augmented images
+train_counter, val_counter = 0, 0
+for i, img in tqdm(enumerate(images), total=len(images) * 16,
+desc=desc):
+for angle in [0, 90, 180, 270]:
+rotated_img = np.rot90(img, k=angle // 90) # Rotate image
+for zoom_factor in [1, 2]: # Handling both zoom levels
+zoomed_img = apply_zoom(rotated_img, zoom_factor) #
+Apply manual zoom
+for add_noise in [True, False]:
+final_img = add_gaussian_noise(zoomed_img) if
+add_noise else zoomed_img
+noise_suffix = 'noise' if add_noise else
+'no_noise'
+# Alternating save path based on counters
+if train_counter < num_train:
+save_path = augmented_train_path
+train_counter += 1
+elif val_counter < num_val:
+save_path = augmented_val_path
+val_counter += 1
+else:
+train_counter, val_counter = 0, 0
+save_path = augmented_train_path if (i % 2 ==
+0) else augmented_val_path
+Image.fromarray(final_img,
+'RGB').save(os.path.join(save_path,
+f'augmented_{os.path.basename(original_path)}_{i}_{angle}_{zoom_factor
+}_{noise_suffix}.jpeg'))
+augment_and_save(train_images, original_train_path,
+augmented_train_path, augmented_val_path, 'Augmenting training
+images')
+augment_and_save(val_images, original_val_path, augmented_val_path,
+'Augmenting validation images')
+print("Data augmentation complete.")
+• 3 channels approach
+• Iteration 1 - Resnet
+• Resnet approach, with optimization over the different parameters
+• Trying to find the optimal configuration for the ResNet model architecture, to then use
+them later
+import itertools
+import tensorflow as tf
+from tensorflow.keras import layers, models
+from tensorflow.keras.preprocessing.image import ImageDataGenerator
+# Function to create ResNet block
+def resnet_block(x, filters, kernel_size=3, stride=1):
+shortcut = x
+x = layers.Conv2D(filters, kernel_size, strides=stride,
+padding='same', use_bias=False)(x)
+x = layers.BatchNormalization()(x)
+x = layers.ReLU()(x)
+x = layers.Conv2D(filters, kernel_size, padding='same',
+use_bias=False)(x)
+x = layers.BatchNormalization()(x)
+if stride != 1 or shortcut.shape[-1] != filters:
+shortcut = layers.Conv2D(filters, 1, strides=stride,
+padding='same', use_bias=False)(shortcut)
+shortcut = layers.BatchNormalization()(shortcut)
+x = layers.add([x, shortcut])
+x = layers.ReLU()(x)
+return x
+# Function to create ResNet model
+def resnet(input_tensor, num_blocks, num_filters):
+x = layers.ZeroPadding2D()(input_tensor)
+x = layers.Conv2D(num_filters, 7, strides=2, padding='valid',
+use_bias=False)(x)
+x = layers.BatchNormalization()(x)
+x = layers.ReLU()(x)
+x = layers.MaxPooling2D(3, strides=2, padding='same')(x)
+for block in range(num_blocks):
+stride = 1 if block == 0 else 2
+x = resnet_block(x, num_filters, stride=stride)
+return x
+# Function to create ResNet-based model
+def create_resnet_model(input_shape, num_blocks, num_filters,
+num_classes):
+input_tensor = layers.Input(shape=input_shape)
+x = resnet(input_tensor, num_blocks, num_filters)
+x = layers.GlobalAveragePooling2D()(x)
+x = layers.Dense(num_classes, activation='softmax')(x)
+model = models.Model(inputs=input_tensor, outputs=x)
+return model
+# Configuration
+cfg = {
+"dataset": "dataset_asteroid_vs_satellite",
+"img_input_shape": [224, 224, 3],
+"number_of_classes": 2,
+"lr1": 1e-4,
+"epochs": 3,
+}
+# Data
+train_datagen = ImageDataGenerator(rescale=1/255.0)
+train_generator = train_datagen.flow_from_directory(
+directory="Asteroid_Satellite/train",
+target_size=(cfg["img_input_shape"][0], cfg["img_input_shape"]
+[1]),
+color_mode="rgb",
+batch_size=32,
+class_mode="categorical",
+shuffle=True,
+seed=42
+)
+valid_generator = train_datagen.flow_from_directory(
+directory="Asteroid_Satellite/val",
+target_size=(cfg["img_input_shape"][0], cfg["img_input_shape"]
+[1]),
+color_mode="rgb",
+batch_size=32,
+class_mode="categorical",
+shuffle=True,
+seed=42
+)
+test_generator = train_datagen.flow_from_directory(
+directory="Asteroid_Satellite/test",
+target_size=(cfg["img_input_shape"][0], cfg["img_input_shape"]
+[1]),
+color_mode="rgb",
+batch_size=32,
+class_mode="categorical",
+shuffle=True,
+seed=42
+)
+# Nested loop for hyperparameter tuning
+param_grid = {
+"num_blocks": [2, 3],
+"num_filters": [32, 64, 128],
+"lr1": [1e-3, 1e-4],
+"epochs": [3, 5],
+"batch_size": [16, 32, 64],
+"optimizer": ['adam', 'rmsprop', 'sgd']
+}
+# List to store results
+results = []
+# Hyperparameter Tuning Loop
+for params in itertools.product(*param_grid.values()):
+cfg.update(dict(zip(param_grid.keys(), params)))
+new_inputs = layers.Input(shape=cfg["img_input_shape"])
+x = create_resnet_model(cfg["img_input_shape"], cfg["num_blocks"],
+cfg["num_filters"], cfg["number_of_classes"])(new_inputs)
+model = tf.keras.Model(new_inputs, x)
+loss_fn = tf.keras.losses.CategoricalCrossentropy()
+# Use the specified optimizer
+if cfg["optimizer"] == 'adam':
+optimizer = tf.keras.optimizers.Adam(learning_rate=cfg["lr1"])
+elif cfg["optimizer"] == 'rmsprop':
+optimizer =
+tf.keras.optimizers.RMSprop(learning_rate=cfg["lr1"])
+elif cfg["optimizer"] == 'sgd':
+optimizer = tf.keras.optimizers.SGD(learning_rate=cfg["lr1"])
+use_metrics = ['accuracy']
+model.compile(optimizer=optimizer, loss=loss_fn,
+metrics=use_metrics)
+callbacks = [tf.keras.callbacks.TerminateOnNaN()]
+history = model.fit(
+train_generator,
+steps_per_epoch=len(train_generator),
+validation_data=valid_generator,
+validation_steps=len(valid_generator),
+epochs=cfg["epochs"],
+callbacks=callbacks,
+verbose=1
+)
+# Evaluate on the test set
+test_loss, test_accuracy = model.evaluate(test_generator,
+verbose=1)
+# Save results
+result_entry = {
+'params': cfg.copy(),
+'val_accuracy': history.history['val_accuracy'][-1],
+'test_accuracy': test_accuracy
+}
+results.append(result_entry)
+# Sort results based on validation accuracy
+results = sorted(results, key=lambda x: x['val_accuracy'],
+reverse=True)
+# Print the 5 best and worst model parameters in terms of validation
+accuracy
+print("Top 5 Best Model Parameters:")
+for entry in results[:5]:
+print("Params:", entry['params'])
+print("Validation Accuracy:", entry['val_accuracy'])
+print("Test Accuracy:", entry['test_accuracy'])
+print("-----")
+print("\nTop 5 Worst Model Parameters:")
+for entry in results[-5:]:
+print("Params:", entry['params'])
+print("Validation Accuracy:", entry['val_accuracy'])
+print("Test Accuracy:", entry['test_accuracy'])
+print("-----")
+• 1 channel approach
+• Build-in functions for integrating LeNet into the existing code from the lab
+• 2
+def build_lenet(input_tensor, alpha=1.0, depth_multiplier=1,
+num_classes=1000):
+x = preprocess_input(input_tensor)
+x = conv_layer(x, int(32 * alpha), stride=2)
+x = depthwise_conv_layer(x, int(64 * alpha), stride=1,
+depth_multiplier=depth_multiplier)
+x = tf.keras.layers.ZeroPadding2D()(x)
+x = depthwise_conv_layer(x, int(128 * alpha), stride=2,
+depth_multiplier=depth_multiplier)
+x = depthwise_conv_layer(x, int(128 * alpha), stride=1,
+depth_multiplier=depth_multiplier)
+x = tf.keras.layers.ZeroPadding2D()(x)
+x = depthwise_conv_layer(x, int(256 * alpha), stride=2,
+depth_multiplier=depth_multiplier)
+x = depthwise_conv_layer(x, int(256 * alpha), stride=1,
+depth_multiplier=depth_multiplier)
+x = tf.keras.layers.ZeroPadding2D()(x)
+x = depthwise_conv_layer(x, int(512 * alpha), stride=2,
+depth_multiplier=depth_multiplier)
+for _ in range(5):
+x = depthwise_conv_layer(x, int(512 * alpha), stride=1,
+depth_multiplier=depth_multiplier)
+x = tf.keras.layers.ZeroPadding2D()(x)
+x = depthwise_conv_layer(x, int(1024 * alpha), stride=2,
+depth_multiplier=depth_multiplier)
+x = depthwise_conv_layer(x, int(1024 * alpha), stride=2,
+depth_multiplier=depth_multiplier)
+x = tf.keras.layers.Flatten()(x)
+x = tf.keras.layers.Dense(128, activation='relu')(x)
+return x
+• 3 channels RGB using LeNet
+• Optimization with Bayesian optimziation
+• Finding worst and last
+import os
+import csv
+import random
+import numpy as np
+import tensorflow as tf
+from tensorflow.keras.preprocessing.image import ImageDataGenerator
+from tensorflow.keras.models import Sequential
+from tensorflow.keras.layers import Conv2D, MaxPooling2D, Flatten,
+Dense, Dropout
+from tensorflow.keras.callbacks import EarlyStopping
+from tensorflow.keras import optimizers
+from skopt import gp_minimize
+from skopt.space import Integer
+from skopt.space.space import Real
+# Set seed for reproducibility
+random.seed(42)
+np.random.seed(42)
+tf.random.set_seed(42)
+# Set parameters
+num_calls = 100 # number of iterations for the optimization
+fit_batch_size = 32 # batch size to be taken from dataset
+epochs_ = 10 # no. of epochs
+dropout_rate = 1e-4 # dropout rate to avoid overfitting
+random_no = 5 # no. of randomized search iterations
+patience_ = 3 # patience for early stopping to avoid overfitting
+def build_lenet5(space):
+num_filters1, kernel_size1, pool_size1, num_filters2,
+kernel_size2, pool_size2, num_fc1, num_fc2 = space
+model = Sequential()
+# Convolutional Layer 1
+model.add(Conv2D(num_filters1, kernel_size=(kernel_size1,
+kernel_size1), activation='relu', input_shape=(224, 224, 3)))
+model.add(MaxPooling2D(pool_size=(pool_size1, pool_size1)))
+# Convolutional Layer 2
+model.add(Conv2D(num_filters2, kernel_size=(kernel_size2,
+kernel_size2), activation='relu'))
+model.add(MaxPooling2D(pool_size=(pool_size2, pool_size2)))
+# Flatten and Fully Connected Layers
+model.add(Flatten())
+model.add(Dense(num_fc1, activation='relu'))
+model.add(Dropout(dropout_rate))
+model.add(Dense(num_fc2, activation='relu'))
+model.add(Dropout(dropout_rate))
+# Output layer
+model.add(Dense(1, activation='sigmoid'))
+return model
+# Define a function to train and evaluate the model
+def train_and_evaluate_model(space):
+# Build the model
+model = build_lenet5(space)
+# Compile the model
+model.compile(optimizer='Adam', loss='binary_crossentropy',
+metrics=['accuracy'])
+# Create data generators for training, testing, and validation
+datagen = ImageDataGenerator(rescale=1./255)
+train_generator = datagen.flow_from_directory(
+'gaofen-plane-noplane/gaofen/train',
+target_size=(224, 224),
+color_mode="rgb",
+batch_size=fit_batch_size,
+class_mode='binary',
+shuffle=True
+)
+test_generator = datagen.flow_from_directory(
+'gaofen-plane-noplane/gaofen/test',
+target_size=(224, 224),
+color_mode="rgb",
+batch_size=fit_batch_size,
+class_mode='binary',
+shuffle=False
+)
+val_generator = datagen.flow_from_directory(
+'gaofen-plane-noplane/gaofen/val',
+target_size=(224, 224),
+color_mode="rgb",
+batch_size=fit_batch_size,
+class_mode='binary',
+shuffle=False
+)
+# Define early stopping callback
+early_stopping = EarlyStopping(monitor='val_loss',
+patience=patience_, restore_best_weights=True)
+# Train the model with early stopping
+history = model.fit(train_generator, epochs=epochs_,
+validation_data=val_generator, callbacks=[early_stopping])
+# Evaluate the model on the test set
+_, accuracy = model.evaluate(test_generator)
+return -accuracy
+# Define the search space
+space = [
+Integer(1, 24, name='num_filters1'),
+Integer(2, 12, name='kernel_size1'),
+Integer(2, 6, name='pool_size1'),
+Integer(11, 36, name='num_filters2'),
+Integer(2, 12, name='kernel_size2'),
+Integer(2, 8, name='pool_size2'),
+Integer(100, 600, name='num_fc1'),
+Integer(50, 250, name='num_fc2'),
+]
+# Define standard LeNet-5 as starting point
+num_filters1_LN5 = 6
+kernel_size1_LN5 = 5
+pool_size1_LN5 = 2
+num_filters2_LN5 = 16
+kernel_size2_LN5 = 5
+pool_size2_LN5 = 2
+num_fc1_LN5 = 120
+num_fc2_LN5 = 84
+X0 = [num_filters1_LN5, kernel_size1_LN5, pool_size1_LN5,
+num_filters2_LN5, kernel_size2_LN5, pool_size2_LN5, num_fc1_LN5,
+num_fc2_LN5]
+# Perform Bayesian optimization
+np.int = int
+res = gp_minimize(train_and_evaluate_model, space, n_calls=num_calls,
+n_initial_points=random_no,
+initial_point_generator="random", x0 = X0,
+random_state=42, verbose=True)
+# Create and open a CSV file for storing results
+with open('lenet5_gaofen_relu_bayopt.csv', mode='w', newline='') as
+csvfile:
+fieldnames = ['Iteration', 'num_filters1', 'kernel_size1',
+'pool_size1', 'num_filters2', 'kernel_size2', 'pool_size2', 'num_fc1',
+'num_fc2', 'Accuracy']
+writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
+# Write header to CSV file
+writer.writeheader()
+hyperpara_data = res.x_iters
+for i in range(len(res.x_iters)):
+hyperpara_data[i].insert(0, i+1)
+hyperpara_data[i].append(res.func_vals[i])
+for i in range(num_calls):
+config = dict(zip(fieldnames, hyperpara_data[i]))
+writer.writerow({**config})
+# Print best accuracy and hyperparameters
+print("Best accuracy: %.4f" % (-res.fun))
+print("Best hyperparameters:", res.x)
+• 3 channels RGB using LeNet
+• Optimization with random optimziation
+• Finding worst and best models out of the optimization process at the end
+# Create and open a CSV file for storing results
+with open('lenet5_astsat_mish.csv', mode='w', newline='') as csvfile:
+fieldnames = ['Iteration', 'num_filters1', 'kernel_size1',
+'pool_size1', 'num_filters2', 'kernel_size2', 'pool_size2', 'num_fc1',
+'num_fc2', 'Accuracy']
+writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
+# Write header to CSV file
+writer.writeheader()
+# Perform randomized search
+for iteration in range(num_iterations):
+# Print iteration number
+print("\n \n Currently executing iteration no. " +
+str(iteration+1) + "\n \n")
+# Randomly sample hyperparameters
+num_filters1 = random.randint(1, 11)
+kernel_size1 = random.randint(2, 8)
+pool_size1 = random.randint(2, 7)
+num_filters2 = random.randint(11, 22)
+kernel_size2 = random.randint(2, 8)
+pool_size2 = random.randint(2, 7)
+num_fc1 = random.randint(100, 150)
+num_fc2 = random.randint(50, 100)
+# Train and evaluate the model
+accuracy, model = train_and_evaluate_model(num_filters1,
+kernel_size1, pool_size1, num_filters2, kernel_size2, pool_size2,
+num_fc1, num_fc2)
+# Save the best model
+if iteration == 0 or accuracy > best_accuracy:
+best_accuracy = accuracy
+best_model = model
+best_config = {'num_filters1': num_filters1,
+'kernel_size1': kernel_size1, 'pool_size1': pool_size1,
+'num_filters2': num_filters2,
+'kernel_size2': kernel_size2, 'pool_size2': pool_size2,
+'num_fc1': num_fc1, 'num_fc2': num_fc2}
+# Write results to CSV file
+config = {'num_filters1': num_filters1, 'kernel_size1':
+kernel_size1, 'pool_size1': pool_size1,
+'num_filters2': num_filters2, 'kernel_size2':
+kernel_size2, 'pool_size2': pool_size2,
+'num_fc1': num_fc1, 'num_fc2': num_fc2}
+writer.writerow({'Iteration': iteration + 1, **config,
+'Accuracy': accuracy})
+# Save the best model to a .keras file
+best_model.save('lenet5_astsat_relu.keras')
+# Show the best model
+print(best_model.summary())
+print(best_accuracy)
