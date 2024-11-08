@@ -1,0 +1,1 @@
+This includes the MATLAB-based optimization of the argument of periapsis, such that the optimal configuration of the RAAN separation is achieved, while still maintaining the apopsis-periapsis line on the ecliptic plane.
