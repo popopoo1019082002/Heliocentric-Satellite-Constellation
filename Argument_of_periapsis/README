@@ -1,1 +1,99 @@
-This includes the MATLAB-based optimization of the argument of periapsis, such that the optimal configuration of the RAAN separation is achieved, while still maintaining the apopsis-periapsis line on the ecliptic plane.
+MATLAB-Based Optimization and Visualization of Orbital Parameters
+This project includes MATLAB code to optimize the Right Ascension of the Ascending Node (RAAN) configuration for a constellation of satellites. The optimization targets an ideal RAAN separation while maintaining the argument of periapsis aligned with the Earth's ecliptic plane. The code also includes 3D visualization to highlight the spatial relationships between the orbital planes and the Earth's ecliptic.
+
+Overview
+The code performs two main functions:
+
+Optimization: It calculates the optimal RAAN separation for multiple satellites such that each satellite maintains the desired angular separation in the Earth's plane.
+Visualization: It provides a 3D representation of the spatial configuration, specifically highlighting the intersected volume formed by the Earth's orbital plane, a satellite's plane, the horizontal plane, and a unit sphere.
+The primary goal is to achieve an even distribution of satellite orbital planes around the Earth, with specific intersections on the ecliptic plane.
+
+Requirements
+To run this project, you need MATLAB installed with support for 3D plotting and optimization.
+
+Getting Started
+Set Up Initial Parameters: Modify the Intersection_plotter_main.m script to define the initial parameters for:
+
+theta1: Inclination angle of the Earth's plane.
+theta2: Inclination angle of the satellite's plane.
+RAAN: Initial RAAN value for optimization.
+yaw1 and yaw2: Yaw angles for the Earth's plane and satellite plane, respectively.
+Run the Script: Execute Intersection_plotter_main.m to start the RAAN optimization process and visualize the intersections.
+
+Files and Functions
+Here's a detailed breakdown of each file and its purpose:
+
+Main Script: Intersection_plotter_main.m
+This script initializes the parameters for the Earth's plane and the satellite plane, then calls the extract_and_plot_3D_shape function to run the optimization and produce a 3D visualization of the intersected region.
+
+Usage:
+
+matlab
+Αντιγραφή κώδικα
+% Parameters for the planes
+theta1 = 30; % Earth's plane inclination angle
+theta2 = 45; % Satellite plane inclination angle
+RAAN = 60; % Right ascension of ascending node
+yaw1 = 0; % Earth's plane yaw
+yaw2 = 0; % Satellite plane yaw
+
+% Run the visualization and optimization
+extract_and_plot_3D_shape(theta1, theta2, RAAN, yaw1, yaw2);
+Core Function: extract_and_plot_3D_shape.m
+This function:
+
+Sets up a 3D plot showing the celestial sphere, Earth's plane, satellite plane, and horizontal plane.
+Calculates intersection lines between these planes and the sphere.
+Highlights the intersected region in a 3D plot to visualize the configuration.
+Key Steps:
+
+Celestial Sphere: A unit sphere representing the Earth-centric perspective.
+Planes: Rotated planes representing the Earth's orbital plane and a satellite's orbital plane.
+Intersection Calculation: Computes intersections between the planes and sphere.
+Highlighting Region: Plots the intersection region within the sphere for a clear 3D visualization.
+Helper Functions
+1. rotation_matrix.m
+This function generates a rotation matrix given three angles: theta (inclination), RAAN (Right Ascension of Ascending Node), and yaw. This matrix is used to rotate each plane to its correct orientation in 3D space.
+
+2. create_plane.m
+This function uses a rotation matrix to create a mesh grid for a plane in 3D space. The plane's coordinates are rotated according to the matrix provided by rotation_matrix.m.
+
+3. calculate_intersections.m
+This function calculates the line of intersection between two planes based on their rotation matrices. It:
+
+Defines the normal vectors of each plane.
+Computes the direction of the intersection line.
+Returns points along this line, bounded within a specific range.
+4. clip_to_sphere.m
+Clips a set of points to lie within a unit sphere. This function ensures that intersection points lying outside the sphere are excluded, which is useful for restricting visualization within the sphere.
+
+Optimization of RAAN
+The optimization algorithm iteratively adjusts the RAAN for each satellite such that the angle of separation on the Earth's plane aligns closely with the target configuration (e.g., 120°, 240°, and 360° for three satellites). The algorithm minimizes the difference between the achieved and target angles by:
+
+Starting with a large step size (e.g., 10 degrees) to approach the target angle.
+Refining the step size as it approaches the target, to achieve high precision.
+Stopping the iteration once the achieved angle is within a 0.5-degree margin of the target angle.
+Optimization Function Flow (for optimize_RAAN.m):
+Initialize RAAN values for each satellite.
+Iteratively adjust RAAN to minimize angular error with respect to the target angle.
+Update the angle projections on the Earth's plane after each RAAN adjustment.
+Track and output convergence status, total iterations, and any non-convergent satellites.
+Visualization of Intersection Region
+Once the RAAN optimization achieves an acceptable configuration, the 3D plot shows the intersection of the following:
+
+Earth's Plane: Represented in cyan.
+Satellite Plane: Shown in magenta.
+Horizontal Plane (xy-plane): Shown in yellow.
+Intersection Region: The resulting 3D shape formed by these intersections, highlighted in light red within the unit sphere, to emphasize the region of interest.
+Example Run
+After setting initial parameters in Intersection_plotter_main.m, simply run the script:
+
+matlab
+Αντιγραφή κώδικα
+Intersection_plotter_main
+Expected output:
+
+A 3D plot showing the celestial sphere, Earth's plane, satellite plane, and the intersected volume highlighted in light red.
+Optimization output for the RAAN values and the achieved angles, displayed in the MATLAB command window.
+This should provide a clear visualization of the optimized satellite constellation with respect to the Earth-centric perspective.
+
