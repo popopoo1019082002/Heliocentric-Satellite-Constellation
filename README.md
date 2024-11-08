@@ -1,2 +1,2 @@
-# Space-Mission-Design---Sun-Sunflower-Constellation
+# CONTINUOUS IN-SITU AND REMOTE SUN OBSERVATION FOR SPACE WEATHER MONITORING AND MITIGATION OF INFRASTRUCTURE THREATS THROUGH AN OPTIMIZED HELIOCENTRIC SATELLITE CONSTELLATION
 Code, extra explanations, statistics, graphs, and everything relevant to the Phase 0-A design of the constellation around the Sun
